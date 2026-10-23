@@ -1,0 +1,61 @@
+name: Sync cert-sync version
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare upstream VERSION to cert_sync/config.yaml
+        id: check
+        run: |
+          upstream=$(curl -fsSL https://raw.githubusercontent.com/foxey/cert-sync/main/VERSION | tr -d '[:space:]')
+          current=$(grep '^version:' cert_sync/config.yaml | sed -E 's/version: *"([^"]+)"/\1/')
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$upstream" != "$current" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open version bump PR
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM: ${{ steps.check.outputs.upstream }}
+          CURRENT: ${{ steps.check.outputs.current }}
+        run: |
+          branch="sync-cert-sync-version-$UPSTREAM"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists, skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          sed -i -E "s/^version: \"[^\"]+\"/version: \"$UPSTREAM\"/" cert_sync/config.yaml
+          git add cert_sync/config.yaml
+          git commit -m "Sync cert_sync version to $UPSTREAM
+
+cert-sync's published image moved to $UPSTREAM (was $CURRENT). Bumping
+here so Supervisor detects the update.
+
+Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          git push origin "$branch"
+          body="cert-sync published a new image version (${UPSTREAM}, was ${CURRENT}). This bumps cert_sync/config.yaml's version field so Home Assistant Supervisor detects the update.
+
+Opened automatically by the daily version-sync check."
+          gh pr create \
+            --title "Sync cert_sync version to ${UPSTREAM}" \
+            --body "$body" \
+            --base main \
+            --head "$branch"
