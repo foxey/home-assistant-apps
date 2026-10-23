@@ -44,16 +44,11 @@ jobs:
           git checkout -b "$branch"
           sed -i -E "s/^version: \"[^\"]+\"/version: \"$UPSTREAM\"/" cert_sync/config.yaml
           git add cert_sync/config.yaml
-          git commit -m "Sync cert_sync version to $UPSTREAM
-
-cert-sync's published image moved to $UPSTREAM (was $CURRENT). Bumping
-here so Supervisor detects the update.
-
-Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          git commit -m "Sync cert_sync version to $UPSTREAM" \
+            -m "cert-sync's published image moved to $UPSTREAM (was $CURRENT). Bumping here so Supervisor detects the update." \
+            -m "Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           git push origin "$branch"
-          body="cert-sync published a new image version (${UPSTREAM}, was ${CURRENT}). This bumps cert_sync/config.yaml's version field so Home Assistant Supervisor detects the update.
-
-Opened automatically by the daily version-sync check."
+          body=$(printf '%s\n\n%s' "cert-sync published a new image version (${UPSTREAM}, was ${CURRENT}). This bumps cert_sync/config.yaml's version field so Home Assistant Supervisor detects the update." "Opened automatically by the daily version-sync check.")
           gh pr create \
             --title "Sync cert_sync version to ${UPSTREAM}" \
             --body "$body" \
