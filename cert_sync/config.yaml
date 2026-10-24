@@ -1,5 +1,5 @@
 name: "cert-sync"
-version: "1.0.0"
+version: "1.0.1"
 slug: "cert_sync"
 description: "Syncs an ACME certificate from Redis directly into Home Assistant Core"
 url: "https://github.com/foxey/cert-sync"
