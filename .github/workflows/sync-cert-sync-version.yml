@@ -27,8 +27,27 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open version bump PR
+      - uses: docker/setup-buildx-action@v3
         if: steps.check.outputs.changed == 'true'
+
+      - name: Verify cert-sync published the matching image
+        id: verify
+        if: steps.check.outputs.changed == 'true'
+        env:
+          UPSTREAM: ${{ steps.check.outputs.upstream }}
+        run: |
+          # The version bump should only ship once the multi-arch manifest
+          # for it actually exists in ghcr.io, otherwise Supervisor would
+          # point at a tag with no image yet.
+          if docker buildx imagetools inspect "ghcr.io/foxey/cert-sync-homeassistant:${UPSTREAM}" >/dev/null 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "Image ghcr.io/foxey/cert-sync-homeassistant:${UPSTREAM} not published yet; will retry on the next run."
+          fi
+
+      - name: Open and merge version bump PR
+        if: steps.check.outputs.changed == 'true' && steps.verify.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM: ${{ steps.check.outputs.upstream }}
@@ -48,9 +67,10 @@ jobs:
             -m "cert-sync's published image moved to $UPSTREAM (was $CURRENT). Bumping here so Supervisor detects the update." \
             -m "Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           git push origin "$branch"
-          body=$(printf '%s\n\n%s' "cert-sync published a new image version (${UPSTREAM}, was ${CURRENT}). This bumps cert_sync/config.yaml's version field so Home Assistant Supervisor detects the update." "Opened automatically by the daily version-sync check.")
+          body=$(printf '%s\n\n%s' "cert-sync published a new image version (${UPSTREAM}, was ${CURRENT}). This bumps cert_sync/config.yaml's version field so Home Assistant Supervisor detects the update. The sync-cert-sync-version workflow verified the matching ghcr.io image exists before opening this PR." "Opened and merged automatically by the daily version-sync check.")
           gh pr create \
             --title "Sync cert_sync version to ${UPSTREAM}" \
             --body "$body" \
             --base main \
             --head "$branch"
+          gh pr merge "$branch" --squash --delete-branch
